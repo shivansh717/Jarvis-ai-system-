@@ -1,0 +1,732 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#030303">
+<title>JARVIS Golden Core</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #030303;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#core {
+  position: absolute;
+  width: min(90vw, 440px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  filter: drop-shadow(0 0 25px #d99b3055);
+}
+
+#core::before,
+#core::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+#core::before {
+  inset: 8%;
+  border: 1px solid rgba(255,190,65,.45);
+  box-shadow:
+    0 0 30px rgba(255,180,30,.25),
+    inset 0 0 35px rgba(255,180,30,.12);
+  animation: spin 20s linear infinite;
+}
+
+#core::after {
+  inset: 20%;
+  border: 1px solid rgba(255,210,100,.3);
+  box-shadow: 0 0 35px rgba(255,190,50,.2);
+  animation: spin 12s linear infinite reverse;
+}
+
+#core.listening {
+  filter: drop-shadow(0 0 40px #ffca60);
+}
+
+#core.speaking {
+  filter: drop-shadow(0 0 65px #ffb52e);
+}
+
+#core.speaking::before {
+  animation-duration: 3s;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="visual"></canvas>
+<div id="core" role="button" tabindex="0"
+     aria-label="Tap to speak to JARVIS"></div>
+
+<script>
+
+/* ===================================
+   1. CENTRAL CONFIGURATION
+=================================== */
+
+const CONFIG = {
+  AI_ENDPOINT: "",
+
+  LANGUAGE: "en-IN",
+
+  SPEECH_RATE: 0.88,
+  SPEECH_PITCH: 0.78,
+
+  MAX_HISTORY: 12
+};
+
+
+/* ===================================
+   2. GOLDEN PARTICLE VISUALIZER
+=================================== */
+
+const canvas = document.getElementById("visual");
+const ctx = canvas.getContext("2d");
+const core = document.getElementById("core");
+
+const Visualizer = (() => {
+
+  let width, height, cx, cy, radius;
+  let particles = [];
+  let rotation = 0;
+  let energy = 0;
+  let targetEnergy = 0;
+  let mode = "idle";
+  let lastTime = 0;
+
+  function resize() {
+
+    const dpr = Math.min(
+      window.devicePixelRatio || 1, 2
+    );
+
+    width = window.innerWidth;
+    height = window.innerHeight;
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    cx = width / 2;
+    cy = height / 2;
+
+    radius = Math.min(width, height) * 0.31;
+
+    createParticles();
+  }
+
+  function createParticles() {
+
+    particles = [];
+
+    const count = 160;
+
+    for (let i = 0; i < count; i++) {
+
+      const y = 1 - 2 * i / (count - 1);
+      const ring = Math.sqrt(1 - y * y);
+      const angle = i * 2.399963;
+
+      particles.push({
+        x: Math.cos(angle) * ring,
+        y: y,
+        z: Math.sin(angle) * ring,
+        size: 0.6 + Math.random() * 1.4,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.5 + Math.random() * 1.4
+      });
+
+    }
+  }
+
+  function setMode(value) {
+
+    mode = value;
+
+    core.classList.remove(
+      "listening", "speaking"
+    );
+
+    if (value !== "idle") {
+      core.classList.add(value);
+    }
+  }
+
+  function boost(amount = 0.3) {
+    energy = Math.min(1, energy + amount);
+  }
+
+  function animate(time) {
+
+    requestAnimationFrame(animate);
+
+    const dt = Math.min(
+      (time - lastTime) / 1000 || 0, 0.05
+    );
+
+    lastTime = time;
+
+    ctx.clearRect(0, 0, width, height);
+
+    targetEnergy =
+      mode === "speaking" ? 0.85 :
+      mode === "listening" ? 0.38 : 0.10;
+
+    energy += (targetEnergy - energy) * 0.07;
+
+    rotation += dt * (
+      mode === "speaking" ? 0.75 :
+      mode === "listening" ? 0.35 : 0.16
+    );
+
+    const points = [];
+
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+
+    for (const p of particles) {
+
+      p.phase += dt * p.speed;
+
+      const movement =
+        Math.sin(p.phase + rotation * 3) * energy;
+
+      const r = radius * (1 + movement * 0.11);
+
+      const x = p.x * r;
+      const y = p.y * r;
+      const z = p.z * r;
+
+      const rx = x * cos - z * sin;
+      const rz = x * sin + z * cos;
+
+      const depth = 0.78 + rz / radius * 0.22;
+
+      points.push({
+        x: cx + rx,
+        y: cy + y * depth,
+        z: rz,
+        size: p.size * depth,
+        alpha: 0.4 + depth * 0.5
+      });
+
+    }
+
+    // Particle connections
+
+    for (let i = 0; i < points.length; i++) {
+
+      for (let j = i + 1; j < points.length; j++) {
+
+        const a = points[i];
+        const b = points[j];
+
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+
+        const distance = Math.hypot(dx, dy);
+
+        if (distance < radius * 0.18) {
+
+          const alpha =
+            (1 - distance / (radius * 0.18)) *
+            (0.15 + energy * 0.22);
+
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+
+          ctx.strokeStyle =
+            `rgba(255,190,65,${alpha})`;
+
+          ctx.lineWidth = 0.7;
+          ctx.stroke();
+
+        }
+      }
+    }
+
+    // Golden particles
+
+    points.sort((a, b) => a.z - b.z);
+
+    for (const p of points) {
+
+      ctx.beginPath();
+
+      ctx.arc(
+        p.x, p.y, p.size, 0, Math.PI * 2
+      );
+
+      ctx.fillStyle =
+        `rgba(255,215,140,${p.alpha})`;
+
+      ctx.shadowBlur =
+        mode === "speaking" ? 18 : 8;
+
+      ctx.shadowColor = "#ffb52e";
+
+      ctx.fill();
+
+    }
+
+    ctx.shadowBlur = 0;
+
+    // Central energy glow
+
+    const glow = ctx.createRadialGradient(
+      cx, cy, 0,
+      cx, cy, radius * 0.8
+    );
+
+    glow.addColorStop(
+      0,
+      `rgba(255,190,65,${0.10 + energy * 0.20})`
+    );
+
+    glow.addColorStop(
+      0.5, "rgba(255,150,25,.05)"
+    );
+
+    glow.addColorStop(
+      1, "rgba(0,0,0,0)"
+    );
+
+    ctx.fillStyle = glow;
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+
+  }
+
+  resize();
+
+  window.addEventListener("resize", resize);
+
+  requestAnimationFrame(animate);
+
+  return { setMode, boost };
+
+})();
+
+
+/* ===================================
+   3. JARVIS VOICE ENGINE
+=================================== */
+
+const Voice = (() => {
+
+  const Recognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
+
+  let recognition;
+  let speaking = false;
+  let listening = false;
+
+  function getVoice() {
+
+    const voices = speechSynthesis.getVoices();
+
+    const british = voices.filter(v =>
+      v.lang.toLowerCase().startsWith("en-gb")
+    );
+
+    return british.find(v =>
+      /male|daniel|george|arthur|oliver/i.test(v.name)
+    ) || british[0] ||
+      voices.find(v =>
+        v.lang.toLowerCase().startsWith("en-in")
+      ) ||
+      voices.find(v =>
+        v.lang.toLowerCase().startsWith("en")
+      );
+
+  }
+
+  function speak(text) {
+
+    if (!("speechSynthesis" in window)) return;
+
+    speechSynthesis.cancel();
+
+    const message = new SpeechSynthesisUtterance(text);
+
+    const voice = getVoice();
+
+    if (voice) {
+      message.voice = voice;
+      message.lang = voice.lang;
+    } else {
+      message.lang = "en-GB";
+    }
+
+    message.rate = CONFIG.SPEECH_RATE;
+    message.pitch = CONFIG.SPEECH_PITCH;
+    message.volume = 1;
+
+    message.onstart = () => {
+      speaking = true;
+      Visualizer.setMode("speaking");
+    };
+
+    // Approximate speech-synchronized animation.
+    message.onboundary = () => {
+      Visualizer.boost(0.18);
+    };
+
+    message.onend = () => {
+      speaking = false;
+      Visualizer.setMode("idle");
+    };
+
+    message.onerror = () => {
+      speaking = false;
+      Visualizer.setMode("idle");
+    };
+
+    speechSynthesis.speak(message);
+
+  }
+
+  function listen(callback) {
+
+    if (!Recognition) {
+
+      speak(
+        "Voice recognition is not supported. Please use Google Chrome."
+      );
+
+      return;
+    }
+
+    if (listening) {
+      try { recognition.stop(); } catch(e) {}
+      return;
+    }
+
+    if (speaking) {
+      speechSynthesis.cancel();
+      speaking = false;
+    }
+
+    recognition = new Recognition();
+
+    recognition.lang = CONFIG.LANGUAGE;
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      listening = true;
+      Visualizer.setMode("listening");
+    };
+
+    recognition.onresult = event => {
+
+      const text =
+        event.results[0][0].transcript;
+
+      listening = false;
+
+      Visualizer.setMode("idle");
+
+      callback(text);
+
+    };
+
+    recognition.onerror = event => {
+
+      listening = false;
+
+      Visualizer.setMode("idle");
+
+      if (event.error === "not-allowed") {
+        speak("Please allow microphone permission.");
+      } else if (event.error === "no-speech") {
+        speak("I did not hear anything. Please try again.");
+      }
+
+    };
+
+    recognition.onend = () => {
+
+      listening = false;
+
+      if (!speaking) {
+        Visualizer.setMode("idle");
+      }
+
+    };
+
+    try {
+      recognition.start();
+    } catch(e) {
+      listening = false;
+      Visualizer.setMode("idle");
+    }
+
+  }
+
+  return { speak, listen };
+
+})();
+
+
+/* ===================================
+   4. AI BRAIN CONNECTION
+=================================== */
+
+const Brain = (() => {
+
+  let history = [];
+
+  let lastWrittenMessage = "";
+
+  async function askAI(prompt) {
+
+    // AI connection not configured yet.
+
+    if (!CONFIG.AI_ENDPOINT) {
+
+      return localCommands(prompt);
+
+    }
+
+    try {
+
+      const response = await fetch(
+        CONFIG.AI_ENDPOINT,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            message: prompt,
+            history: history
+          })
+
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("AI connection failed");
+      }
+
+      const data = await response.json();
+
+      const answer =
+        data.reply || data.text;
+
+      if (typeof answer !== "string" || !answer.trim()) {
+        throw new Error("Invalid AI response");
+      }
+
+      history.push(
+        { role: "user", content: prompt },
+        { role: "assistant", content: answer }
+      );
+
+      history = history.slice(-CONFIG.MAX_HISTORY);
+
+      return answer;
+
+    } catch(error) {
+
+      console.error(error);
+
+      return "I cannot reach my AI brain right now. Please check the connection.";
+
+    }
+
+  }
+
+
+  async function localCommands(prompt) {
+
+    const q = prompt.toLowerCase();
+
+    if (q.includes("hello") || q.includes("hi jarvis")) {
+      return "Good day. JARVIS systems are online.";
+    }
+
+    if (q.includes("your name")) {
+      return "I am JARVIS, your personal artificial intelligence assistant.";
+    }
+
+    if (q.includes("time")) {
+      return "The current time is " +
+        new Date().toLocaleTimeString("en-IN");
+    }
+
+    if (q.includes("date")) {
+      return "Today is " +
+        new Date().toLocaleDateString("en-IN");
+    }
+
+    if (q.includes("how are you")) {
+      return "All systems are functioning normally.";
+    }
+
+    if (q.includes("copy that message") ||
+        q.includes("copy the message")) {
+
+      if (!lastWrittenMessage) {
+        return "There is no prepared message to copy.";
+      }
+
+      try {
+
+        await navigator.clipboard.writeText(
+          lastWrittenMessage
+        );
+
+        return "Your message has been copied to the clipboard.";
+
+      } catch(error) {
+
+        return "Clipboard permission is unavailable. Please open this page through a secure browser connection.";
+
+      }
+
+    }
+
+    return "My artificial intelligence connection is not configured yet. Please connect my AI brain.";
+
+  }
+
+
+  async function process(prompt) {
+
+    // Copy the previously generated written message.
+    const q = prompt.toLowerCase();
+
+    if (q.includes("copy that message") ||
+        q.includes("copy the message")) {
+
+      if (!lastWrittenMessage) {
+        Voice.speak("There is no prepared message to copy.");
+        return;
+      }
+
+      try {
+
+        await navigator.clipboard.writeText(
+          lastWrittenMessage
+        );
+
+        Voice.speak("Your message has been copied.");
+
+      } catch(error) {
+
+        Voice.speak("I could not access the clipboard. Please check browser permissions.");
+
+      }
+
+      return;
+    }
+
+    const answer = await askAI(prompt);
+
+    // Keep generated written messages for a later copy command.
+    if (/write|draft|compose|prepare.*message|create.*message/i.test(prompt)) {
+      lastWrittenMessage = answer;
+    }
+
+    Voice.speak(answer);
+
+  }
+
+  return { process };
+
+})();
+
+
+/* ===================================
+   5. MAIN JARVIS SYSTEM
+=================================== */
+
+function activateJarvis() {
+
+  Voice.listen(Brain.process);
+
+}
+
+core.addEventListener(
+  "click",
+  activateJarvis
+);
+
+core.addEventListener("keydown", event => {
+
+  if (event.key === "Enter" || event.key === " ") {
+
+    event.preventDefault();
+
+    activateJarvis();
+
+  }
+
+});
+
+
+/* ===================================
+   6. INITIALIZE SYSTEM
+=================================== */
+
+if ("speechSynthesis" in window) {
+
+  speechSynthesis.getVoices();
+
+  speechSynthesis.onvoiceschanged = () => {
+    speechSynthesis.getVoices();
+  };
+
+}
+
+</script>
+</body>
+</html>

@@ -1,286 +1,251 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#020202">
 <title>JARVIS AI</title>
 
 <style>
 * {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
 }
 
 body {
+  margin: 0;
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  background: radial-gradient(circle, #171006 0%, #050505 45%, #000 100%);
+  background: radial-gradient(circle, #17130a 0%, #050505 55%, #000 100%);
   display: flex;
   justify-content: center;
   align-items: center;
+  font-family: Arial, sans-serif;
 }
 
-#orbCanvas {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  inset: 0;
-}
-
-.orb-container {
-  position: relative;
-  width: min(78vw, 390px);
+#orb {
+  width: min(75vw, 360px);
   aspect-ratio: 1;
+  border-radius: 50%;
+  position: relative;
+  cursor: pointer;
   display: flex;
   justify-content: center;
   align-items: center;
-  cursor: pointer;
-  z-index: 2;
-  -webkit-tap-highlight-color: transparent;
+  animation: float 4s ease-in-out infinite;
+  filter: drop-shadow(0 0 20px #b88620);
 }
 
-.orb {
-  width: 55%;
-  height: 55%;
+#orb::before,
+#orb::after {
+  content: "";
+  position: absolute;
+  inset: 8%;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 30%,
-      #fff6c4 0%,
-      #ffcf50 9%,
-      #d58a16 28%,
-      #653508 53%,
-      #100900 75%);
-  box-shadow:
-    0 0 20px #ffb52b,
-    0 0 50px #d68b19,
-    0 0 100px rgba(255, 167, 30, .5),
-    inset -15px -15px 35px #000;
-  animation: breathe 3s ease-in-out infinite;
+  border: 2px solid rgba(255,190,60,.65);
+  box-shadow: 0 0 25px #b88620, inset 0 0 25px #b88620;
+  animation: rotate 12s linear infinite;
+}
+
+#orb::after {
+  inset: 18%;
+  border-color: rgba(255,220,130,.7);
+  animation: rotateReverse 8s linear infinite;
+}
+
+.core {
+  width: 35%;
+  height: 35%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff8d0 0%, #ffca55 25%, #9b6414 65%, transparent 100%);
+  box-shadow: 0 0 35px #ffbd39, 0 0 75px #d58a1d;
+  animation: pulse 2s ease-in-out infinite;
 }
 
 .ring {
   position: absolute;
-  width: 85%;
-  height: 85%;
-  border: 1px solid rgba(255, 183, 55, .6);
+  inset: 0;
   border-radius: 50%;
-  box-shadow: 0 0 18px rgba(255, 170, 30, .5);
+  border: 1px dashed rgba(255,200,80,.55);
+  animation: rotate 20s linear infinite;
 }
 
-.ring.one {
-  transform: rotateX(65deg) rotateZ(0deg);
-  animation: rotate1 7s linear infinite;
+#orb.listening {
+  filter: drop-shadow(0 0 35px #ffe08a);
 }
 
-.ring.two {
-  width: 100%;
-  height: 65%;
-  transform: rotateX(65deg) rotateZ(65deg);
-  animation: rotate2 9s linear infinite;
+#orb.listening .core {
+  animation-duration: .55s;
 }
 
-.ring.three {
-  width: 70%;
-  height: 100%;
-  transform: rotateY(65deg);
-  animation: rotate3 11s linear infinite;
+#orb.speaking .core {
+  animation-duration: .3s;
 }
 
-.orb-container.listening .orb {
-  box-shadow:
-    0 0 35px #ffe17a,
-    0 0 90px #ffb52b,
-    0 0 150px #e68c16;
-  animation-duration: .7s;
+@keyframes rotate {
+  to { transform: rotate(360deg); }
 }
 
-.orb-container.speaking .orb {
-  animation-duration: .35s;
+@keyframes rotateReverse {
+  to { transform: rotate(-360deg); }
 }
 
-@keyframes breathe {
-  0%,100% { transform: scale(.95); }
-  50% { transform: scale(1.06); }
+@keyframes pulse {
+  0%,100% { transform: scale(.85); opacity: .8; }
+  50% { transform: scale(1.12); opacity: 1; }
 }
 
-@keyframes rotate1 {
-  to { transform: rotateX(65deg) rotateZ(360deg); }
-}
-
-@keyframes rotate2 {
-  to { transform: rotateX(65deg) rotateZ(425deg); }
-}
-
-@keyframes rotate3 {
-  to { transform: rotateY(65deg) rotateZ(360deg); }
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
 }
 </style>
 </head>
 
 <body>
 
-<canvas id="orbCanvas"></canvas>
-
-<div class="orb-container" id="orb">
-  <div class="ring one"></div>
-  <div class="ring two"></div>
-  <div class="ring three"></div>
-  <div class="orb"></div>
+<div id="orb" title="Tap to speak">
+  <div class="ring"></div>
+  <div class="core"></div>
 </div>
 
 <script>
+/* JARVIS CONFIGURATION */
+const CONFIG = {
+  AI_ENDPOINT: "https://old-wave-3cc9.shivanshpatelbbu.workers.dev",
+  LANGUAGE: "en-GB"
+};
+
 const orb = document.getElementById("orb");
-const canvas = document.getElementById("orbCanvas");
-const ctx = canvas.getContext("2d");
 
-let particles = [];
-let width, height;
-
-function resize() {
-  width = canvas.width = window.innerWidth;
-  height = canvas.height = window.innerHeight;
-  particles = [];
-
-  for (let i = 0; i < 150; i++) {
-    particles.push({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      size: Math.random() * 2 + .5,
-      speed: Math.random() * .5 + .1,
-      angle: Math.random() * Math.PI * 2
-    });
-  }
-}
-
-function animate() {
-  ctx.clearRect(0, 0, width, height);
-
-  particles.forEach((p, i) => {
-    p.angle += .003;
-    p.x += Math.cos(p.angle) * p.speed;
-    p.y += Math.sin(p.angle) * p.speed;
-
-    if (p.x < 0) p.x = width;
-    if (p.x > width) p.x = 0;
-    if (p.y < 0) p.y = height;
-    if (p.y > height) p.y = 0;
-
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(255,177,55,.7)";
-    ctx.fill();
-
-    for (let j = i + 1; j < particles.length; j++) {
-      const q = particles[j];
-      const dx = p.x - q.x;
-      const dy = p.y - q.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      if (distance < 85) {
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y);
-        ctx.lineTo(q.x, q.y);
-        ctx.strokeStyle = `rgba(255,170,40,${.16 * (1-distance/85)})`;
-        ctx.stroke();
-      }
-    }
-  });
-
-  requestAnimationFrame(animate);
-}
-
-window.addEventListener("resize", resize);
-resize();
-animate();
-
-const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
-
-let recognition;
-let listening = false;
+let history = [];
 let lastWrittenMessage = "";
+let listening = false;
+let recognition = null;
+
+/* VOICE SYSTEM */
+function chooseVoice() {
+  const voices = speechSynthesis.getVoices();
+
+  return voices.find(v =>
+    v.lang === "en-GB" && /male|daniel|george|arthur/i.test(v.name)
+  ) || voices.find(v =>
+    v.lang === "en-GB"
+  ) || voices.find(v =>
+    v.lang.startsWith("en")
+  ) || null;
+}
 
 function speak(message) {
-  if (!("speechSynthesis" in window)) return;
+  if (!message) return;
 
   speechSynthesis.cancel();
 
   const utterance = new SpeechSynthesisUtterance(message);
-  const voices = speechSynthesis.getVoices();
+  utterance.lang = CONFIG.LANGUAGE;
+  utterance.rate = 0.92;
+  utterance.pitch = 0.85;
 
-  const voice =
-    voices.find(v => v.lang === "en-GB" && /male|daniel|george|oliver/i.test(v.name)) ||
-    voices.find(v => v.lang === "en-GB") ||
-    voices.find(v => v.lang === "en-IN") ||
-    voices.find(v => v.lang.startsWith("en"));
-
+  const voice = chooseVoice();
   if (voice) utterance.voice = voice;
-
-  utterance.rate = 0.88;
-  utterance.pitch = 0.82;
-  utterance.volume = 1;
 
   orb.classList.add("speaking");
 
-  utterance.onend = () => orb.classList.remove("speaking");
-  utterance.onerror = () => orb.classList.remove("speaking");
+  utterance.onend = () => {
+    orb.classList.remove("speaking");
+  };
+
+  utterance.onerror = () => {
+    orb.classList.remove("speaking");
+  };
 
   speechSynthesis.speak(utterance);
 }
 
-function respond(text) {
-  const command = text.toLowerCase().trim();
+speechSynthesis.onvoiceschanged = chooseVoice;
 
-  if (command.includes("hello") || command.includes("hi jarvis")) {
-    speak("Hello. JARVIS systems are online. How may I assist you?");
+/* AI BRAIN */
+async function askAI(message) {
+  const response = await fetch(CONFIG.AI_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: message,
+      history: history.slice(-10)
+    })
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "AI server returned an error.");
   }
-  else if (command.includes("your name")) {
-    speak("I am JARVIS, your personal artificial intelligence assistant.");
+
+  if (!data.reply) {
+    throw new Error("The AI server returned no reply.");
   }
-  else if (command.includes("who created you")) {
-    speak("I was created by Shivansh Singh.");
-  }
-  else if (command.includes("how are you")) {
-    speak("All systems are functioning normally. Thank you for asking.");
-  }
-  else if (command.includes("time")) {
-    speak("The current time is " +
-      new Date().toLocaleTimeString("en-IN"));
-  }
-  else if (command.includes("date")) {
-    speak("Today's date is " +
-      new Date().toLocaleDateString("en-IN"));
-  }
-  else if (command.includes("copy that message")) {
-    if (lastWrittenMessage) {
-      navigator.clipboard.writeText(lastWrittenMessage)
-        .then(() => speak("Message copied to clipboard."))
-        .catch(() => speak("Clipboard access is unavailable. Please try again."));
-    } else {
+
+  const answer = data.reply;
+
+  history.push(
+    { role: "user", parts: [{ text: message }] },
+    { role: "model", parts: [{ text: answer }] }
+  );
+
+  return answer;
+}
+
+/* COPY COMMAND */
+async function processCommand(message) {
+  const lower = message.toLowerCase().trim();
+
+  if (
+    lower === "copy that message" ||
+    lower === "copy the message" ||
+    lower === "copy it"
+  ) {
+    if (!lastWrittenMessage) {
       speak("There is no prepared message to copy.");
+      return;
     }
+
+    try {
+      await navigator.clipboard.writeText(lastWrittenMessage);
+      speak("The message has been copied.");
+    } catch (error) {
+      speak("I could not access the clipboard. Please use your browser's copy options.");
+    }
+
+    return;
   }
-  else if (command.includes("write") ||
-           command.includes("draft") ||
-           command.includes("compose")) {
-    lastWrittenMessage =
-      "This is a sample message prepared by JARVIS. Connect an AI service to generate custom messages.";
-    speak(lastWrittenMessage);
-  }
-  else if (command.includes("help")) {
-    speak("You can ask me my name, the time, the date, or ask me to prepare a sample message.");
-  }
-  else {
-    speak("I heard you. My artificial intelligence connection is not configured yet.");
+
+  try {
+    const answer = await askAI(message);
+
+    if (
+      /\b(write|draft|compose|prepare)\b/i.test(message)
+    ) {
+      lastWrittenMessage = answer;
+    }
+
+    speak(answer);
+
+  } catch (error) {
+    console.error(error);
+    speak("I cannot connect to my AI brain. Please check the server connection.");
   }
 }
 
+/* MICROPHONE */
 function startListening() {
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
+
   if (!SpeechRecognition) {
-    speak("Voice recognition is not supported in this browser. Please try Chrome.");
+    speak("Voice recognition is not supported in this browser. Please use Chrome.");
     return;
   }
 
@@ -290,25 +255,35 @@ function startListening() {
   }
 
   recognition = new SpeechRecognition();
-  recognition.lang = "en-IN";
+  recognition.lang = CONFIG.LANGUAGE;
   recognition.continuous = false;
   recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
 
   recognition.onstart = () => {
     listening = true;
     orb.classList.add("listening");
   };
 
-  recognition.onresult = (event) => {
-    const transcript = event.results[0][0].transcript;
-    respond(transcript);
+  recognition.onresult = event => {
+    const message = event.results[0][0].transcript;
+
+    listening = false;
+    orb.classList.remove("listening");
+
+    processCommand(message);
   };
 
-  recognition.onerror = (event) => {
+  recognition.onerror = event => {
+    listening = false;
+    orb.classList.remove("listening");
+
     if (event.error === "not-allowed") {
-      speak("Microphone permission is required.");
+      speak("Please allow microphone permission.");
+    } else if (event.error === "no-speech") {
+      speak("I did not hear anything. Please try again.");
     } else {
-      speak("Voice recognition encountered an error.");
+      speak("There was a microphone error.");
     }
   };
 
@@ -322,12 +297,17 @@ function startListening() {
   } catch (error) {
     listening = false;
     orb.classList.remove("listening");
+    speak("Please try again.");
   }
 }
 
+/* ACTIVATE JARVIS */
 orb.addEventListener("click", startListening);
 
-speechSynthesis.getVoices();
+/* INITIALISE */
+window.addEventListener("load", () => {
+  speechSynthesis.getVoices();
+});
 </script>
 
 </body>
